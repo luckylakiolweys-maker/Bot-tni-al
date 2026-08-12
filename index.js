@@ -248,12 +248,16 @@ const commands = [
             try {
                 await interaction.deferReply({ ephemeral: false });
 
-                let message = isi;
-                if (mention) {
-                    message += `\n\n<@${mention.id}>`;
-                }
+                const embed = new EmbedBuilder()
+                    .setColor('#FF6B6B')
+                    .setTitle('📢 PENGUMUMAN')
+                    .setDescription(isi);
 
-                const messageOptions = { content: message };
+                const messageOptions = { embeds: [embed] };
+
+                if (mention) {
+                    messageOptions.content = `<@${mention.id}>`;
+                }
 
                 if (attachment) {
                     messageOptions.files = [attachment.url];
@@ -308,7 +312,12 @@ const commands = [
             try {
                 await interaction.deferReply({ ephemeral: false });
 
-                await interaction.channel.send(isi);
+                const embed = new EmbedBuilder()
+                    .setColor('#4CAF50')
+                    .setTitle('📝 NOTES')
+                    .setDescription(isi);
+
+                await interaction.channel.send({ embeds: [embed] });
 
                 await interaction.followUp({
                     content: '✅ Pesan berhasil dikirim!',
@@ -525,7 +534,7 @@ Link: ${ROBLOX_LINK}`;
     {
         data: new SlashCommandBuilder()
             .setName('panel-ticket')
-            .setDescription('🎫 Buat ticket/laporan')
+            .setDescription('🎫 Buat ticket panel')
             .addStringOption(option =>
                 option
                     .setName('judul')
@@ -560,18 +569,13 @@ Link: ${ROBLOX_LINK}`;
 
                 const ticket = createTicket(interaction.guild.id, interaction.user.id, judul, deskripsi, mention?.id);
 
-                // Post ticket di main channel dengan button
+                // Post ticket panel di main channel dengan button
                 const ticketEmbed = new EmbedBuilder()
                     .setColor('#FF0000')
-                    .setTitle('🎫 PUSAT BANDING & LAPORAN')
+                    .setTitle('🎫 TICKET PANEL')
                     .addFields(
                         { name: '📝 Judul', value: judul, inline: false },
-                        { name: '📄 Deskripsi', value: deskripsi, inline: false },
-                        mention ? { name: '👤 Mention', value: `<@${mention.id}>`, inline: false } : { name: '⠀', value: '⠀', inline: false },
-                        { name: '🔧 Status', value: '🟢 Open', inline: true },
-                        { name: '🆔 Ticket ID', value: `\`${ticket.id}\``, inline: true },
-                        { name: '👨‍💼 Dibuat oleh', value: interaction.user.tag, inline: false },
-                        { name: '⏰ Waktu', value: new Date().toLocaleString('id-ID'), inline: false }
+                        { name: '📄 Deskripsi', value: deskripsi, inline: false }
                     )
                     .setFooter({ text: 'TNI AL Bot Ticketing System' })
                     .setTimestamp();
@@ -579,10 +583,10 @@ Link: ${ROBLOX_LINK}`;
                 const button = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder()
-                            .setCustomId(`ticket_ajukan_${ticket.id}`)
-                            .setLabel('Ajukan Banding')
+                            .setCustomId(`ticket_create_${ticket.id}`)
+                            .setLabel('Create Ticket')
                             .setStyle(ButtonStyle.Primary)
-                            .setEmoji('🎖️')
+                            .setEmoji('🎫')
                     );
 
                 await interaction.channel.send({
@@ -591,11 +595,11 @@ Link: ${ROBLOX_LINK}`;
                 });
 
                 await interaction.followUp({
-                    content: '✅ Ticket berhasil dibuat!',
+                    content: '✅ Ticket panel berhasil dibuat!',
                     ephemeral: true
                 });
 
-                console.log(`✅ Ticket dibuat oleh ${interaction.user.username} - ID: ${ticket.id}`);
+                console.log(`✅ Ticket panel dibuat oleh ${interaction.user.username} - ID: ${ticket.id}`);
 
             } catch (error) {
                 console.error('❌ Error di command panel-ticket:', error);
@@ -797,8 +801,9 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
     // Handle buttons untuk panel-ticket
     if (interaction.isButton()) {
-        if (interaction.customId.startsWith('ticket_ajukan_')) {
-            const ticketId = interaction.customId.replace('ticket_ajukan_', '');
+        // Create ticket channel
+        if (interaction.customId.startsWith('ticket_create_')) {
+            const ticketId = interaction.customId.replace('ticket_create_', '');
             const guildId = interaction.guild.id;
             const tickets = getTickets(guildId);
             const ticket = tickets.find(t => t.id === ticketId);
@@ -811,28 +816,34 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                // Create channel untuk laporan
-                const laporanChannel = await interaction.guild.channels.fetch(LAPORAN_CHANNEL_ID);
-                
-                if (!laporanChannel) {
-                    return await interaction.reply({
-                        content: '❌ Channel laporan tidak ditemukan!',
-                        ephemeral: true
-                    });
-                }
+                // Create channel untuk ticket
+                const ticketChannel = await interaction.guild.channels.create({
+                    name: `ticket-${ticketId}`,
+                    type: ChannelType.GuildText,
+                    topic: `Ticket: ${ticket.judul}`,
+                    permissionOverwrites: [
+                        {
+                            id: interaction.guild.id,
+                            deny: ['ViewChannel'],
+                        },
+                        {
+                            id: ADMIN_ROLE_ID,
+                            allow: ['ViewChannel', 'SendMessages', 'ManageMessages', 'ManageThreads'],
+                        }
+                    ],
+                });
 
-                // Post ticket di laporan channel
+                // Post ticket message di channel baru
                 const ticketEmbed = new EmbedBuilder()
-                    .setColor('#FF0000')
-                    .setTitle('🎫 TICKET LAPORAN')
+                    .setColor('#1F8B4C')
+                    .setTitle('🎫 Ticket Created')
+                    .setDescription(`Welcome <@${ticket.userId}>, thank you for reaching out to our support team!\n\nPlease describe your issue and we will get back to you as soon as possible.`)
                     .addFields(
-                        { name: '🆔 Ticket ID', value: `\`${ticket.id}\``, inline: true },
+                        { name: '🆔 Ticket ID', value: `\`${ticket.id}\``, inline: false },
                         { name: '📝 Judul', value: ticket.judul, inline: false },
                         { name: '📄 Deskripsi', value: ticket.deskripsi, inline: false },
-                        ticket.mention ? { name: '👤 Mention', value: `<@${ticket.mention}>`, inline: false } : { name: '⠀', value: '⠀', inline: false },
                         { name: '👨‍💼 Reporter', value: `<@${ticket.userId}>`, inline: true },
-                        { name: '⏰ Dibuat', value: new Date(ticket.createdAt).toLocaleString('id-ID'), inline: true },
-                        { name: '🔧 Status', value: '🟡 Pending', inline: false }
+                        { name: '🔧 Status', value: '🟡 Open', inline: true }
                     )
                     .setFooter({ text: 'TNI AL Bot Ticketing System' })
                     .setTimestamp();
@@ -846,31 +857,33 @@ client.on('interactionCreate', async interaction => {
                             .setEmoji('👨‍💼'),
                         new ButtonBuilder()
                             .setCustomId(`ticket_close_${ticket.id}`)
-                            .setLabel('Tutup Ticket')
+                            .setLabel('Close')
                             .setStyle(ButtonStyle.Danger)
-                            .setEmoji('❌')
+                            .setEmoji('🔒')
                     );
 
-                await laporanChannel.send({
+                await ticketChannel.send({
                     embeds: [ticketEmbed],
                     components: [buttons]
                 });
 
                 await interaction.reply({
-                    content: '✅ Ticket berhasil dikirim ke channel laporan!',
+                    content: `✅ Ticket channel dibuat: <#${ticketChannel.id}>`,
                     ephemeral: true
                 });
 
+                console.log(`✅ Ticket channel dibuat untuk ticket ${ticketId} - Channel: ${ticketChannel.name}`);
+
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error creating ticket channel:', error);
                 await interaction.reply({
-                    content: '❌ Terjadi error!',
+                    content: '❌ Terjadi error saat membuat ticket channel!',
                     ephemeral: true
                 });
             }
         }
 
-        // Claim ticket
+        // Claim ticket - ADMIN ONLY
         if (interaction.customId.startsWith('ticket_claim_')) {
             if (!await checkAdminRole(interaction)) return;
 
@@ -896,7 +909,7 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // Close ticket
+        // Close ticket - ADMIN ONLY
         if (interaction.customId.startsWith('ticket_close_')) {
             if (!await checkAdminRole(interaction)) return;
 
