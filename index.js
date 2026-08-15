@@ -1221,6 +1221,20 @@ process.on('uncaughtException', error => {
 });
 
 // ==================== LOGIN ====================
+client.once('ready', () => {
+    console.log(`✅ Bot online sebagai ${client.user.tag}`);
+
+    function updateStatus() {
+        const guild = client.guilds.cache.first();
+        const jumlahMember = guild ? guild.memberCount : 0;
+        client.user.setActivity(`RINAF RBX | ${jumlahMember} Members`, {
+            type: 3, // 3 = WATCHING
+        });
+    }
+
+    updateStatus();
+    setInterval(updateStatus, 5 * 60 * 1000);
+});
 
 console.log('🚀 Memulai TNI AL Bot...\n');
 client.login(process.env.DISCORD_TOKEN);
