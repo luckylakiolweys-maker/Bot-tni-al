@@ -169,7 +169,87 @@ function getBlacklist(guildId) {
     return blacklist[guildId] || [];
 }
 
-// ==================== HELPER FUNCTION ====================
+// ==================== HELPER: ROBLOX PROMOTION ====================
+
+async function getUserRoleInGroup(userId, groupId, apiKey) {
+    try {
+        const response = await fetch(`https://groups.roblox.com/v1/groups/${groupId}/users/${userId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey
+            }
+        });
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const data = await response.json();
+        return data.role?.name || 'Unknown Role';
+    } catch (error) {
+        return null;
+    }
+}
+
+async function promoteUserRoblox(username, groupId, apiKey) {
+    try {
+        // Step 1: Get user ID from username
+        const userResponse = await fetch(`https://users.roblox.com/v1/usernames/users`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                usernames: [username]
+            })
+        });
+
+        if (!userResponse.ok) {
+            return { success: false, error: 'Failed to fetch user info' };
+        }
+
+        const userData = await userResponse.json();
+        
+        if (!userData.data || userData.data.length === 0) {
+            return { success: false, error: 'User not found' };
+        }
+
+        const userId = userData.data[0].id;
+
+        // Step 2: Get old role sebelum promote
+        const oldRole = await getUserRoleInGroup(userId, groupId, apiKey);
+
+        // Step 3: Promote user di group dengan API Key
+        const promoteResponse = await fetch(`https://groups.roblox.com/v1/groups/${groupId}/users/${userId}/promotion`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey
+            }
+        });
+
+        if (!promoteResponse.ok) {
+            const errorData = await promoteResponse.json();
+            return { success: false, error: errorData.errors?.[0]?.message || 'Promotion failed' };
+        }
+
+        // Step 4: Get new role setelah promote
+        const newRole = await getUserRoleInGroup(userId, groupId, apiKey);
+
+        return { 
+            success: true, 
+            oldRole: oldRole || 'Unknown', 
+            newRole: newRole || 'Unknown' 
+        };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+// ==================== HELPER: ROLE CHECKING ====================
+
+
 
 async function checkAdminRole(interaction) {
     const member = await interaction.guild.members.fetch(interaction.user.id);
@@ -619,7 +699,147 @@ Link: ${ROBLOX_LINK}`;
         }
     },
 
-    // ==================== BLACKLIST-ADD COMMAND ====================
+    // ==================== PROMOTION COMMAND ====================
+    {
+        data: new SlashCommandBuilder()
+            .setName('promotion')
+            .setDescription('🎖️ Promote members di Roblox grup')
+            .addStringOption(option =>
+                option
+                    .setName('nama')
+                    .setDescription('Username Roblox (pisahkan dengan koma untuk multiple: Ikhsanzz9,Diego,Icang)')
+                    .setRequired(true)
+                    .setMaxLength(2000)
+            )
+            .addStringOption(option =>
+                option
+                    .setName('judul')
+                    .setDescription('Judul laporan (default: Laporan Promote)')
+                    .setRequired(false)
+                    .setMaxLength(100)
+            )
+            .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+
+        async execute(interaction) {
+            if (!await checkAdminRole(interaction)) return;
+
+            const namaString = interaction.options.getString('nama');
+            const judul = interaction.options.getString('judul') || 'Laporan Promote';
+            
+            try {
+                await interaction.deferReply({ ephemeral: false });
+
+                // Parse nama dari string (pisahkan dengan koma)
+                const namaList = namaString
+                    .split(',')
+                    .map(nama => nama.trim())
+                    .filter(nama => nama.length > 0);
+
+                if (namaList.length === 0) {
+                    return await interaction.followUp({
+                        content: '❌ Tidak ada username yang valid!',
+                        ephemeral: true
+                    });
+                }
+
+                if (!process.env.ROBLOX_API_KEY) {
+                    return await interaction.followUp({
+                        content: '❌ ROBLOX_API_KEY belum dikonfigurasi!',
+                        ephemeral: true
+                    });
+                }
+
+                if (!process.env.ROBLOX_GROUP_ID) {
+                    return await interaction.followUp({
+                        content: '❌ ROBLOX_GROUP_ID belum dikonfigurasi!',
+                        ephemeral: true
+                    });
+                }
+
+                const successList = [];
+                const failureList = [];
+
+                // Process setiap nama
+                for (const nama of namaList) {
+                    try {
+                        const result = await promoteUserRoblox(nama, process.env.ROBLOX_GROUP_ID, process.env.ROBLOX_API_KEY);
+                        
+                        if (result.success) {
+                            successList.push({
+                                username: nama,
+                                oldRole: result.oldRole,
+                                newRole: result.newRole
+                            });
+                            console.log(`✅ ${nama} promoted: ${result.oldRole} → ${result.newRole}`);
+                        } else {
+                            failureList.push({
+                                username: nama,
+                                error: result.error
+                            });
+                            console.log(`❌ ${nama} - ${result.error}`);
+                        }
+                    } catch (error) {
+                        failureList.push({
+                            username: nama,
+                            error: error.message
+                        });
+                        console.log(`❌ ${nama} - ${error.message}`);
+                    }
+                }
+
+                // Build promotion message
+                let promotionText = `🪖 ${judul}\n\n`;
+
+                if (successList.length > 0) {
+                    promotionText += `Berhasil (${successList.length}):\n`;
+                    for (const item of successList) {
+                        promotionText += `✅ **${item.username}**: [ENLISTED] ${item.oldRole} → [ENLISTED] ${item.newRole}\n`;
+                    }
+                }
+
+                if (failureList.length > 0) {
+                    promotionText += `\nGagal (${failureList.length}):\n`;
+                    for (const item of failureList) {
+                        promotionText += `❌ **${item.username}**: ${item.error}\n`;
+                    }
+                }
+
+                // Create embed
+                const promotionEmbed = new EmbedBuilder()
+                    .setColor(successList.length > 0 ? '#00FF00' : '#FF0000')
+                    .setTitle(`🪖 ${judul}`)
+                    .setDescription(promotionText)
+                    .setFooter({ text: `Total: ${namaList.length} | Success: ${successList.length} | Failed: ${failureList.length}` })
+                    .setTimestamp();
+
+                await interaction.channel.send({ embeds: [promotionEmbed] });
+
+                await interaction.followUp({
+                    content: `✅ Promotion selesai! ${successList.length} user berhasil dipromote.`,
+                    ephemeral: true
+                });
+
+                console.log(`✅ Promotion completed by ${interaction.user.username} - ${successList.length}/${namaList.length} success`);
+
+            } catch (error) {
+                console.error('❌ Error di command promotion:', error);
+                
+                if (interaction.deferred) {
+                    await interaction.followUp({
+                        content: '❌ Terjadi error saat proses promotion!',
+                        ephemeral: true
+                    });
+                } else {
+                    await interaction.reply({
+                        content: '❌ Terjadi error saat proses promotion!',
+                        ephemeral: true
+                    });
+                }
+            }
+        }
+    },
+
+
     {
         data: new SlashCommandBuilder()
             .setName('blacklist-add')
