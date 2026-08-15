@@ -21,8 +21,9 @@ const SETAM_PING_ROLE = process.env.SETAM_PING_ROLE;
 const SETAM_STAGE = process.env.SETAM_STAGE;
 const SECATAM_PING_ROLE = process.env.SECATAM_PING_ROLE;
 const SECATAM_STAGE = process.env.SECATAM_STAGE;
-const ROBLOX_LINK = process.env.ROBLOX_LINK;
+const ROBLOX_LINK = process.env.ROBLOX_GROUP_ID;
 const LAPORAN_CHANNEL_ID = process.env.LAPORAN_CHANNEL_ID;
+const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY;
 
 const TICKETS_FILE = './tickets.json';
 const BLACKLIST_FILE = './blacklist.json';
@@ -793,7 +794,7 @@ Link: ${ROBLOX_LINK}`;
                 if (successList.length > 0) {
                     promotionText += `Berhasil (${successList.length}):\n`;
                     for (const item of successList) {
-                        promotionText += `✅ **${item.username}**: [ENLISTED] ${item.oldRole} → [ENLISTED] ${item.newRole}\n`;
+                        promotionText += `✅ **${item.username}**: ${item.oldRole} → ${item.newRole}\n`;
                     }
                 }
 
